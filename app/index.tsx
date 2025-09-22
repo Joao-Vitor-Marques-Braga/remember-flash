@@ -7,11 +7,10 @@ import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAnswerRepository } from '@/lib/repositories';
 import { Ionicons } from '@expo/vector-icons';
-import { useThemeColor } from '@/hooks/use-theme-color';
 import { Colors } from '@/constants/theme';
+import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme'; 
 import { ThemedTextInput } from '@/components/ThemedTextInput';
-import { useThemeOverride } from '@/lib/theme-override';
 
 function HomeTab() {
   const router = useRouter();
@@ -51,7 +50,6 @@ function HomeTab() {
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                 <ThemedText type="title" style={styles.title}>RememberFlash</ThemedText>
-                <ThemeToggle />
               </View>
               <ThemedText style={styles.subtitle}>Seus estudos, simples e minimalistas.</ThemedText>
 
@@ -152,17 +150,6 @@ export default function HomeScreen() {
         />
       </View>
     </SafeAreaView>
-  );
-}
-
-function ThemeToggle() {
-  const { scheme, toggle } = useThemeOverride();
-  const tint = Colors[scheme].tint;
-  return (
-    <Pressable onPress={toggle} style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-      <Ionicons name={scheme === 'dark' ? 'moon' : 'sunny'} size={18} color={tint} />
-      <ThemedText style={{ color: tint }}>{scheme === 'dark' ? 'Dark' : 'Light'}</ThemedText>
-    </Pressable>
   );
 }
 

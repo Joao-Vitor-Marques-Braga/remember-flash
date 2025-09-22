@@ -1,15 +1,16 @@
-import React from 'react';
-import { useLocalSearchParams } from 'expo-router';
-import { FlatList, StyleSheet, View, Button, Alert, RefreshControl, Pressable, ActivityIndicator } from 'react-native';
-import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
-import { useCardRepository, useCategoryRepository } from '@/lib/repositories';
-import { generateQuestionsByCategory } from '@/lib/ai';
-import { Link, useNavigation, useRouter } from 'expo-router';
-import { SafeAreaView } from 'react-native-safe-area-context';
-import { KeyboardAvoidingView, Platform } from 'react-native';
-import { useThemeColor } from '@/hooks/use-theme-color';
+import { ThemedView } from '@/components/themed-view';
 import { ThemedTextInput } from '@/components/ThemedTextInput';
+import { Colors } from '@/constants/theme';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { generateQuestionsByCategory } from '@/lib/ai';
+import { useCardRepository, useCategoryRepository } from '@/lib/repositories';
+import { Ionicons } from '@expo/vector-icons';
+import { Link, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import React from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
+import { KeyboardAwareFlatList } from 'react-native-keyboard-aware-scroll-view';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 export default function CategoryDetailScreen() {
   const params = useLocalSearchParams<{ id: string; name?: string }>();
@@ -17,7 +18,7 @@ export default function CategoryDetailScreen() {
   const navigation = useNavigation();
   const router = useRouter();
   const { listCardsByCategory, createCard, deleteCard, updateCard } = useCardRepository();
-  const { renameCategory } = useCategoryRepository();
+  const { renameCategory, deleteCategory } = useCategoryRepository();
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [cards, setCards] = React.useState<any[]>([]);
@@ -91,6 +92,10 @@ export default function CategoryDetailScreen() {
     }
   }
 
+  async function onGeneratePrompt() {
+    router.push({ pathname: '/prompt' as any, params: { categoryId: String(categoryId) } });
+  }
+
   function toggleExpand(id: number) {
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
   }
@@ -112,159 +117,201 @@ export default function CategoryDetailScreen() {
     setRefreshing(false);
   }
 
+  async function onDeleteCategory(id: number) {
+    await deleteCategory(id);
+    router.push('/');
+  }
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
-      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ThemedView style={styles.container}>
-        <FlatList
-          data={filtered}
-          keyExtractor={(item) => String(item.id)}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-          ListHeaderComponent={
-            <View>
-              {editingName ? (
-                <View style={[styles.panel, { backgroundColor: surface, borderColor: border }]}> 
-                  <ThemedText type="subtitle">Renomear categoria</ThemedText>
-                  <ThemedTextInput value={categoryName} onChangeText={setCategoryName} style={styles.input} />
-                  <View style={{ flexDirection: 'row', gap: 8 }}>
-                    <Button title="Cancelar" onPress={() => { setCategoryName(String(params.name || '')); setEditingName(false); }} />
-                    <Button title="Salvar" onPress={async () => { await renameCategory(categoryId, categoryName.trim()); navigation.setOptions({ title: categoryName.trim() }); setEditingName(false); }} />
+          <KeyboardAwareFlatList
+            data={filtered}
+            keyExtractor={(item) => String(item.id)}
+            enableOnAndroid={true}
+            extraScrollHeight={100}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+            ListHeaderComponent={
+              <View>
+                {editingName ? (
+                  <View style={[styles.panel, { backgroundColor: surface, borderColor: border, marginBottom: 8 }]}>
+                    <ThemedText type="subtitle">Renomear categoria</ThemedText>
+                    <ThemedTextInput value={categoryName} onChangeText={setCategoryName} style={styles.input} />
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                      <Pressable style={styles.cancelButton} onPress={() => { setCategoryName(String(params.name || '')); setEditingName(false); }}>
+                        <ThemedText style={{ color: Colors.light.background }}>Cancelar</ThemedText>
+                      </Pressable>
+                      <Pressable style={styles.saveButton} onPress={async () => { await renameCategory(categoryId, categoryName.trim()); navigation.setOptions({ title: categoryName.trim() }); setEditingName(false); }}>
+                        <ThemedText style={{ color: Colors.light.background }}>Salvar</ThemedText>
+                      </Pressable>
+                    </View>
+                  </View>
+                ) : (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', marginBottom: 8 }}>
+                    <ThemedText type="title">{categoryName || 'Cards'}</ThemedText>
+                    <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                      <Pressable onPress={() => setEditingName(true)}>
+                        <Ionicons name="pencil" size={24} color={Colors.light.tint} />
+                      </Pressable>
+                    </View>
+                  </View>
+                )}
+
+                <View style={[styles.panel, { backgroundColor: surface, borderColor: border, marginBottom: 8 }]}>
+                  <ThemedText type="subtitle">Ações rápidas</ThemedText>
+                  <View style={styles.chipsRow}>
+                    <Pressable onPress={onGenerate} disabled={loadingIA} style={[styles.chip, { borderColor: border, opacity: loadingIA ? 0.6 : 1 }]}>
+                      <ThemedText>Gerar 5 questões</ThemedText>
+                    </Pressable>
+                    <Pressable onPress={onGenerate10} disabled={loadingIA} style={[styles.chip, { borderColor: border, opacity: loadingIA ? 0.6 : 1 }]}>
+                      <ThemedText>Gerar 10 questões</ThemedText>
+                    </Pressable>
+                    <Pressable onPress={onGeneratePrompt} disabled={loadingIA} style={[styles.chip, { borderColor: border, opacity: loadingIA ? 0.6 : 1 }]}>
+                      <ThemedText>Alterar prompt de questões</ThemedText>
+                    </Pressable>
+                    <Link href="/modal" asChild>
+                      <Pressable style={[styles.chip, { borderColor: border, opacity: loadingIA ? 0.6 : 1 }]} >
+                        <ThemedText>Configurar IA</ThemedText>
+                      </Pressable>
+                    </Link>
+                    {loadingIA ? (
+                      <View style={{ marginLeft: 8 }}>
+                        <ActivityIndicator />
+                      </View>
+                    ) : null}
                   </View>
                 </View>
-              ) : (
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <ThemedText type="title">{categoryName || 'Cards'}</ThemedText>
-                  <Button title="Editar nome" onPress={() => setEditingName(true)} />
-                </View>
-              )}
 
-              <View style={[styles.panel, { backgroundColor: surface, borderColor: border }]}> 
-                <ThemedText type="subtitle">Ações rápidas</ThemedText>
-                <View style={styles.chipsRow}>
-                  <Pressable onPress={onGenerate} disabled={loadingIA} style={[styles.chip, { borderColor: border, opacity: loadingIA ? 0.6 : 1 }]}>
-                    <ThemedText>IA (5)</ThemedText>
-                  </Pressable>
-                  <Pressable onPress={onGenerate10} disabled={loadingIA} style={[styles.chip, { borderColor: border, opacity: loadingIA ? 0.6 : 1 }]}>
-                    <ThemedText>IA (10)</ThemedText>
-                  </Pressable>
-                  <Link href="/modal" asChild>
-                    <Pressable style={[styles.chip, { borderColor: border }]}>
-                      <ThemedText>Chave IA</ThemedText>
+                <View style={[styles.panel, { backgroundColor: surface, borderColor: border, marginBottom: 8 }]}>
+                <ThemedText type="subtitle">Novo card</ThemedText>
+                
+                {/* REMOVA o KeyboardAvoidingView e o ScrollView que estavam aqui */}
+                <ThemedTextInput
+                  placeholder="Título"
+                  placeholderTextColor={Colors.light.placeholder}
+                  value={title}
+                  onChangeText={setTitle}
+                  style={styles.input}
+                />
+                <TextInput
+                  editable
+                  multiline={true}
+                  numberOfLines={4}
+                  placeholder="Descrição"
+                  placeholderTextColor={Colors.light.placeholder}
+                  value={description}
+                  onChangeText={setDescription}
+                  style={styles.input}
+                />
+                
+                <Pressable onPress={onAdd} style={styles.addButton}>
+                  <ThemedText style={{ color: Colors.light.background }}>Adicionar</ThemedText>
+                </Pressable>
+              </View>
+
+                <ThemedTextInput
+                  placeholderTextColor={Colors.light.placeholder}
+                  placeholder="Buscar por título ou descrição"
+                  value={search}
+                  onChangeText={setSearch}
+                  style={styles.input}
+                />
+
+                <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Cards</ThemedText>
+              </View>
+            }
+            renderItem={({ item }) => {
+              const options = item.options_json ? JSON.parse(item.options_json) as Record<string, string> : null;
+              return (
+                <Pressable style={[styles.card, { backgroundColor: surface, borderColor: border }]} onPress={() => toggleExpand(item.id)}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                    <ThemedText type="defaultSemiBold">{item.title}</ThemedText>
+                    <Pressable onPress={(e) => { e.stopPropagation(); setEditTitle((prev) => ({ ...prev, [item.id]: item.title })); setEditDesc((prev) => ({ ...prev, [item.id]: item.description || '' })); setExpanded((prev) => ({ ...prev, [item.id]: true })); }}>
+                      <Ionicons name="pencil" size={20} color={Colors.light.tint} />
                     </Pressable>
-                  </Link>
-                  {loadingIA ? (
-                    <View style={{ marginLeft: 8 }}>
-                      <ActivityIndicator />
+                  </View>
+                  {options ? (
+                    <View style={{ gap: 6 }}>
+                      {(['a', 'b', 'c', 'd'] as const).map((key) => {
+                        const label = options[key];
+                        if (!label) return null;
+                        const isCorrect = item.correct === key;
+                        return (
+                          <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                            <ThemedText type="defaultSemiBold">{key.toUpperCase()}.</ThemedText>
+                            <ThemedText style={{ opacity: isCorrect ? 1 : 0.85 }}>{label}</ThemedText>
+                            {isCorrect ? <ThemedText type="link">   (correta)</ThemedText> : null}
+                          </View>
+                        );
+                      })}
                     </View>
                   ) : null}
-                </View>
-              </View>
-
-              <View style={[styles.panel, { backgroundColor: surface, borderColor: border }]}> 
-                <ThemedText type="subtitle">Novo card</ThemedText>
-                <ThemedTextInput placeholder="Título" value={title} onChangeText={setTitle} style={styles.input} />
-                <ThemedTextInput placeholder="Descrição" value={description} onChangeText={setDescription} style={styles.input} />
-                <Button title="Adicionar" onPress={onAdd} />
-              </View>
-
-              <ThemedTextInput
-                placeholder="Buscar por título ou descrição"
-                value={search}
-                onChangeText={setSearch}
-                style={styles.input}
-              />
-
-              <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Cards</ThemedText>
-            </View>
-          }
-          renderItem={({ item }) => {
-            const options = item.options_json ? JSON.parse(item.options_json) as Record<string, string> : null;
-            return (
-              <Pressable style={[styles.card, { backgroundColor: surface, borderColor: border }]} onPress={() => toggleExpand(item.id)}>
-                <ThemedText type="defaultSemiBold" style={{ marginBottom: 6 }}>{item.title}</ThemedText>
-                {options ? (
-                  <View style={{ gap: 6 }}>
-                    {(['a','b','c','d'] as const).map((key) => {
-                      const label = options[key];
-                      if (!label) return null;
-                      const isCorrect = item.correct === key;
-                      return (
-                        <View key={key} style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                          <ThemedText type="defaultSemiBold">{key.toUpperCase()}.</ThemedText>
-                          <ThemedText style={{ opacity: isCorrect ? 1 : 0.85 }}>{label}</ThemedText>
-                          {isCorrect ? <ThemedText type="link">   (correta)</ThemedText> : null}
-                        </View>
-                      );
-                    })}
+                  {item.description ? (
+                    <ThemedText numberOfLines={expanded[item.id] ? undefined : 2}>
+                      {item.description}
+                    </ThemedText>
+                  ) : null}
+                  <View style={{ height: 8 }} />
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end', gap: 12 }}>
+                    <Pressable onPress={(e) => { e.stopPropagation(); onDeleteCard(item.id); }}>
+                      <ThemedText type="link">Excluir</ThemedText>
+                    </Pressable>
                   </View>
-                ) : null}
-                {item.description ? (
-                  <ThemedText numberOfLines={expanded[item.id] ? undefined : 2}>
-                    {item.description}
-                  </ThemedText>
-                ) : null}
-                <View style={{ height: 8 }} />
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12 }}>
-                  <Pressable onPress={() => {
-                    // abrir modo de edição inline e preparar estados
-                    setEditTitle((prev) => ({ ...prev, [item.id]: item.title }));
-                    setEditDesc((prev) => ({ ...prev, [item.id]: item.description || '' }));
-                    setExpanded((prev) => ({ ...prev, [item.id]: true }));
-                  }}>
-                    <ThemedText type="link">Editar</ThemedText>
-                  </Pressable>
-                  <Pressable onPress={() => onDeleteCard(item.id)}>
-                    <ThemedText type="link">Excluir</ThemedText>
-                  </Pressable>
-                </View>
-                {expanded[item.id] ? (
-                  <View style={{ marginTop: 8, gap: 8 }}>
-                    <ThemedTextInput
-                      placeholder="Editar título"
-                      value={editTitle[item.id] ?? ''}
-                      onChangeText={(t) => setEditTitle((prev) => ({ ...prev, [item.id]: t }))}
-                      style={styles.input}
-                    />
-                    <ThemedTextInput
-                      placeholder="Editar descrição"
-                      value={editDesc[item.id] ?? ''}
-                      onChangeText={(t) => setEditDesc((prev) => ({ ...prev, [item.id]: t }))}
-                      style={styles.input}
-                    />
-                    <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
-                      <Button
-                        title="Cancelar"
-                        onPress={() => {
-                          setExpanded((prev) => ({ ...prev, [item.id]: false }));
-                        }}
+                  {expanded[item.id] ? (
+                    <View style={{ marginTop: 8, gap: 8 }}>
+                      <ThemedTextInput
+                        placeholderTextColor={Colors.light.placeholder}
+                        placeholder="Editar título"
+                        value={editTitle[item.id] ?? ''}
+                        onChangeText={(t) => setEditTitle((prev) => ({ ...prev, [item.id]: t }))}
+                        style={styles.input}
                       />
-                      <Button
-                        title="Salvar"
-                        onPress={async () => {
-                          await updateCard(item.id, {
-                            title: editTitle[item.id] ?? item.title,
-                            description: editDesc[item.id] ?? item.description ?? '',
-                          });
-                          await load();
-                          setExpanded((prev) => ({ ...prev, [item.id]: false }));
-                        }}
+                      <ThemedTextInput
+                        placeholderTextColor={Colors.light.placeholder}
+                        placeholder="Editar descrição"
+                        value={editDesc[item.id] ?? ''}
+                        onChangeText={(t) => setEditDesc((prev) => ({ ...prev, [item.id]: t }))}
+                        style={styles.input}
                       />
+                      <View style={{ flexDirection: 'row', gap: 8, justifyContent: 'flex-end' }}>
+                        <Pressable
+                          style={styles.cancelButton}
+                          onPress={() => {
+                            setExpanded((prev) => ({ ...prev, [item.id]: false }));
+                          }}
+                        >
+                          <ThemedText style={{ color: Colors.light.text }}>Cancelar</ThemedText>
+                        </Pressable>
+                        <Pressable
+                          style={styles.saveButton}
+                          onPress={async () => {
+                            await updateCard(item.id, {
+                              title: editTitle[item.id] ?? item.title,
+                              description: editDesc[item.id] ?? item.description ?? '',
+                            });
+                            await load();
+                            setExpanded((prev) => ({ ...prev, [item.id]: false }));
+                          }}
+                        >
+                          <ThemedText style={{ color: Colors.light.tintLight }}>Salvar</ThemedText>
+                        </Pressable>
+                      </View>
                     </View>
-                  </View>
-                ) : null}
-              </Pressable>
-            );
-          }}
-          ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
-          ListEmptyComponent={() => (
-            <View style={[styles.empty, { borderColor: border }]}> 
-              <ThemedText>Nenhum card ainda. Crie um ou gere com IA.</ThemedText>
-            </View>
-          )}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          contentContainerStyle={{ paddingBottom: 16 }}
-        />
+                  ) : null}
+                </Pressable>
+              );
+            }}
+            ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+            ListEmptyComponent={() => (
+              <View style={[styles.empty, { borderColor: border }]}>
+                <ThemedText>Nenhum card ainda. Crie um ou gere com IA.</ThemedText>
+              </View>
+            )}
+            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+            contentContainerStyle={{ paddingBottom: 16 }}
+          />
         </ThemedView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -301,6 +348,7 @@ const styles = StyleSheet.create({
   chipsRow: {
     flexDirection: 'row',
     gap: 8,
+    flexWrap: 'wrap',
   },
   chip: {
     borderWidth: StyleSheet.hairlineWidth,
@@ -313,6 +361,36 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     alignItems: 'center',
+  },
+  addButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.light.tintBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    justifyContent: 'center',
+  },
+  cancelButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.light.tintBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    justifyContent: 'center',
+  },
+  saveButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    backgroundColor: Colors.light.tintBorder,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    justifyContent: 'center',
   },
 });
 
