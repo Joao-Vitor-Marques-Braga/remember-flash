@@ -21,9 +21,14 @@ Regras:
 - Formato exato: [{"title": string, "description": string, "options": {"a": string, "b": string, "c": string, "d": string}, "correct": "a"|"b"|"c"|"d"}]`;
 
   // Usa modelo configurável; fallback para 1.5 se 2.5 não suportar
-  const model = (await getModelName()) || 'gemini-1.5-flash-latest';
-  const makeUrl = (m: string) => 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent?key=' + encodeURIComponent(apiKey);
-  let url = makeUrl(model);
+  const model = "gemini-2.5-flash";
+  
+  // Log da versão do Gemini sendo usada
+  console.log(`🤖 Gerando questões com Gemini: ${model}`);
+  
+  // Gera a URL base para o modelo
+  let modelName = model;
+  let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
 
   const body = {
     generationConfig: {
@@ -44,9 +49,11 @@ Regras:
 
   if (!res.ok) {
     // fallback automático para 1.5-flash se o modelo atual não suportar
-    const fallbackModel = 'gemini-1.5-flash-latest';
-    if (model !== fallbackModel && res.status === 404) {
-      url = makeUrl(fallbackModel);
+    const fallbackModel = 'gemini-1.5-flash';
+    if (modelName !== fallbackModel && res.status === 404) {
+      console.log(`⚠️ Modelo ${modelName} não disponível, usando fallback: ${fallbackModel}`);
+      // Regenera URL com modelo fallback
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent?key=${apiKey}`;
       res = await fetch(url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

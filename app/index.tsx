@@ -72,7 +72,7 @@ function HomeTab() {
           renderItem={({ item }) => (
             <Pressable
               style={styles.listItem}
-              onPress={() => router.push({ pathname: '/categories/[id]' as any, params: { id: String(item.id), name: item.name } })}
+              onPress={() => router.push({ pathname: '/category' as any, params: { id: String(item.id), name: item.name } })}
             >
               <ThemedText>{item.name}</ThemedText>
               <Button title="Excluir" onPress={() => onDelete(item.id)} />
