@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, View, Button, FlatList, Pressable } from 'react-native';
+import { StyleSheet, View, FlatList, Pressable } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
 import { useCategoryRepository } from '@/lib/repositories';
@@ -62,7 +62,9 @@ function HomeTab() {
                     placeholder="Ex.: Português, Matemática, Direito Adm..."
                     style={[styles.input]}
                   />
-                  <Button title="Adicionar" onPress={onAdd} />
+                  <Pressable onPress={onAdd}>
+                    <ThemedText style={{ color: Colors.light.tint }}>Adicionar</ThemedText>
+                  </Pressable>
                 </View>
               </View>
 
@@ -74,8 +76,13 @@ function HomeTab() {
               style={styles.listItem}
               onPress={() => router.push({ pathname: '/category' as any, params: { id: String(item.id), name: item.name } })}
             >
-              <ThemedText>{item.name}</ThemedText>
-              <Button title="Excluir" onPress={() => onDelete(item.id)} />
+              <View style={{ flexDirection: 'row', gap: 8, flex: 1, alignItems: 'flex-start' }}>
+                <Ionicons name="folder" size={20} color={Colors.light.tint} />
+                <ThemedText style={{ flex: 1, flexWrap: 'wrap' }}>{item.name}</ThemedText>
+              </View>
+              <Pressable onPress={(e) => { e.stopPropagation(); onDelete(item.id); }}>
+                <Ionicons name="trash" size={20} color={Colors.light.tint} />
+              </Pressable>
             </Pressable>
           )}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
@@ -83,7 +90,9 @@ function HomeTab() {
           ListFooterComponent={<View style={{ height: 12 }} />}
         />
 
-        <Button title="Configurar IA (Gemini)" onPress={() => router.push('/modal' as any)} />
+        <Pressable onPress={() => router.push('/modal' as any)}>
+          <ThemedText type="link">Configurar IA (Gemini)</ThemedText>
+        </Pressable>
       </ThemedView>
     </SafeAreaView>
   );
@@ -94,6 +103,10 @@ function QuestionsTab() {
   const { getStatsByCategory } = useAnswerRepository();
   const [stats, setStats] = React.useState<Array<{ category_name: string | null; total: number; acertos: number; erros: number }>>([]);
   React.useEffect(() => { (async () => setStats(await getStatsByCategory()))(); }, [getStatsByCategory]);
+  const colorScheme = useColorScheme() ?? 'light';
+  const surface = useThemeColor({}, 'surface');
+  const border = useThemeColor({}, 'border');
+  const tint = Colors[colorScheme].tint;
   return (
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
       <ThemedView style={styles.container}>
@@ -101,12 +114,35 @@ function QuestionsTab() {
         <FlatList
           data={stats}
           keyExtractor={(i, idx) => String(i.category_name ?? 'Geral') + idx}
-          renderItem={({ item }) => (
-            <View style={styles.listItem}>
-              <ThemedText type="defaultSemiBold">{item.category_name || 'Geral'}</ThemedText>
-              <ThemedText>Acertos: {item.acertos} | Erros: {item.erros} | Total: {item.total}</ThemedText>
-            </View>
-          )}
+          renderItem={({ item }) => {
+            const name = item.category_name || 'Geral';
+            const total = Math.max(0, item.total || 0);
+            const acertos = Math.max(0, item.acertos || 0);
+            const erros = Math.max(0, item.erros || 0);
+            const perc = total > 0 ? Math.round((acertos / total) * 100) : 0;
+            return (
+              <View style={[styles.statItem, { backgroundColor: surface, borderColor: border }]}> 
+                <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
+                  <Ionicons name="stats-chart" size={20} color={tint} />
+                  <View style={{ flex: 1, gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                      <ThemedText type="defaultSemiBold" style={{ flex: 1, flexWrap: 'wrap' }}>{name}</ThemedText>
+                      <View style={[styles.totalPill, { borderColor: border, backgroundColor: tint + '33' }]}>
+                        <ThemedText style={{ color: Colors.light.background }}>Total: {total}</ThemedText>
+                      </View>
+                    </View>
+                    <View style={[styles.progressBar, { borderColor: border }]}>
+                      <View style={[styles.progressFill, { width: `${perc}%`, backgroundColor: tint }]} />
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <ThemedText>Acertos: {acertos} ({perc}%)</ThemedText>
+                      <ThemedText>Erros: {erros}</ThemedText>
+                    </View>
+                  </View>
+                </View>
+              </View>
+            );
+          }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           contentContainerStyle={{ paddingBottom: 16 }}
         />
@@ -197,6 +233,11 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 14,
   },
+  statItem: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderRadius: 12,
+    padding: 14,
+  },
   listItem: {
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
@@ -204,6 +245,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    gap: 8,
   },
   fabBar: {
     position: 'absolute',
@@ -229,6 +271,22 @@ const styles = StyleSheet.create({
   },
   tabLabel: {
     fontSize: 12,
+  },
+  progressBar: {
+    height: 8,
+    borderRadius: 999,
+    overflow: 'hidden',
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  progressFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+  totalPill: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
   },
 });
 

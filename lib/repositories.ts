@@ -30,7 +30,7 @@ export function useCardRepository() {
 
   async function listCardsByCategory(categoryId: number): Promise<Card[]> {
     const result = await db.getAllAsync<Card>(
-      'SELECT id, category_id, title, description, created_at, options_json, correct FROM cards WHERE category_id = ? ORDER BY id DESC',
+      'SELECT id, category_id, title, description, created_at, options_json, correct, order_index FROM cards WHERE category_id = ? ORDER BY order_index ASC, id DESC',
       categoryId
     );
     return result;
@@ -40,17 +40,18 @@ export function useCardRepository() {
     const { categoryId, title, description, options, correct } = input;
     const optionsJson = options ? JSON.stringify(options) : null;
     const result = await db.runAsync(
-      'INSERT INTO cards (category_id, title, description, options_json, correct) VALUES (?, ?, ?, ?, ?)',
+      'INSERT INTO cards (category_id, title, description, options_json, correct, order_index) VALUES (?, ?, ?, ?, ?, ?)',
       categoryId,
       title,
       description ?? null,
       optionsJson,
-      correct ?? null
+      correct ?? null,
+      Date.now()
     );
     return result.lastInsertRowId as number;
   }
 
-  async function updateCard(id: number, updates: { title?: string; description?: string | null; options?: Record<string, string> | null; correct?: string | null }): Promise<void> {
+  async function updateCard(id: number, updates: { title?: string; description?: string | null; options?: Record<string, string> | null; correct?: string | null; order_index?: number }): Promise<void> {
     const fields: string[] = [];
     const values: (string | null | number)[] = [];
     if (updates.title !== undefined) {
@@ -69,6 +70,10 @@ export function useCardRepository() {
       fields.push('correct = ?');
       values.push(updates.correct ?? null);
     }
+    if (updates.order_index !== undefined) {
+      fields.push('order_index = ?');
+      values.push(updates.order_index);
+    }
     if (fields.length === 0) return;
     values.push(id);
     const sql = `UPDATE cards SET ${fields.join(', ')} WHERE id = ?`;
@@ -79,7 +84,17 @@ export function useCardRepository() {
     await db.runAsync('DELETE FROM cards WHERE id = ?', id);
   }
 
-  return { listCardsByCategory, createCard, updateCard, deleteCard };
+  async function reorderCards(categoryId: number, orderedIds: number[]): Promise<void> {
+    // usa transação simples sequencial para atualizar order_index conforme posição
+    // menor order_index = mais ao topo
+    let index = 0;
+    for (const id of orderedIds) {
+      await db.runAsync('UPDATE cards SET order_index = ? WHERE id = ? AND category_id = ?', index, id, categoryId);
+      index += 1;
+    }
+  }
+
+  return { listCardsByCategory, createCard, updateCard, deleteCard, reorderCards };
 }
 
 export function useAnswerRepository() {

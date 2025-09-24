@@ -114,4 +114,89 @@ function normalize(items: any[]): GeneratedQA[] {
     .filter((it) => it.title.trim().length > 0);
 }
 
+// Gerar questões/flashcards a partir de um PDF (base64) usando Gemini
+export async function generateFlashcardsFromPdf(pdfBase64: string, num: number = 5): Promise<GeneratedQA[]> {
+  const apiKey = await getApiKey();
+  if (!apiKey) throw new Error('API key não configurada. Abra o modal e salve a chave.');
+
+  const prompt = `Você receberá um arquivo PDF com conteúdo para estudo.\n\nTarefa: Gere ${num} flashcards (formato frente/verso) que resumam os pontos principais da maneira mais objetiva e eficiente possível.\n\nRegras:\n- Cada item deve ter: título (pergunta ou tópico curto) e descrição (resumo objetivo).\n- Não crie alternativas de múltipla escolha.\n- Responda SOMENTE com JSON válido, sem texto adicional e sem markdown.\n- Formato exato: [{"title": string, "description": string}]`;
+
+  // Usa modelo configurável; fallback para 1.5 se 2.5 não suportar
+  const model = 'gemini-2.5-flash';
+
+  console.log(`🤖 Gerando flashcards de PDF com Gemini: ${model}`);
+
+  let modelName = model;
+  let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const body: any = {
+    generationConfig: {
+      response_mime_type: 'application/json',
+    },
+    contents: [
+      {
+        parts: [
+          { text: prompt },
+          { inline_data: { mime_type: 'application/pdf', data: pdfBase64 } },
+        ],
+      },
+    ],
+  };
+
+  let res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const fallbackModel = 'gemini-1.5-flash';
+    if (modelName !== fallbackModel && res.status === 404) {
+      console.log(`⚠️ Modelo ${modelName} não disponível, usando fallback: ${fallbackModel}`);
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent?key=${apiKey}`;
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error('Falha na requisição à IA: ' + text);
+    }
+  }
+
+  const data = await res.json();
+  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+
+  const tryParse = (s: string): GeneratedQA[] | null => {
+    try {
+      const parsed = JSON.parse(s);
+      if (Array.isArray(parsed)) return parsed as GeneratedQA[];
+      if (parsed && Array.isArray((parsed as any).items)) return (parsed as any).items as GeneratedQA[];
+      if (parsed && Array.isArray((parsed as any).flashcards)) return (parsed as any).flashcards as GeneratedQA[];
+      return null;
+    } catch {
+      return null;
+    }
+  };
+
+  let result = tryParse(text);
+  if (result) return normalize(result);
+
+  const fencedMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fencedMatch?.[1]) {
+    const alt = tryParse(fencedMatch[1]);
+    if (alt) return normalize(alt);
+  }
+
+  const arrayMatch = text.match(/\[[\s\S]*\]/);
+  if (arrayMatch?.[0]) {
+    const alt = tryParse(arrayMatch[0]);
+    if (alt) return normalize(alt);
+  }
+
+  return [];
+}
+
 

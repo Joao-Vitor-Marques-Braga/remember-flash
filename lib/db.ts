@@ -43,6 +43,12 @@ export async function migrateDb(database: SQLiteDatabase): Promise<void> {
   if (!colNames.has('correct')) {
     await database.execAsync("ALTER TABLE cards ADD COLUMN correct TEXT");
   }
+  // Migração para ordenação manual dos cards
+  if (!colNames.has('order_index')) {
+    await database.execAsync("ALTER TABLE cards ADD COLUMN order_index INTEGER");
+    // Inicializa para manter a ordem atual (mais novo primeiro): usa -id
+    await database.execAsync("UPDATE cards SET order_index = -id WHERE order_index IS NULL");
+  }
 }
 
 export type Category = {
