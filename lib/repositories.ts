@@ -1,16 +1,90 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import type { Card, Category, Essay } from '@/lib/db';
+import type { Card, Category, Essay, Folder } from '@/lib/db';
+
+export function useFolderRepository() {
+  const db = useSQLiteContext();
+
+  async function listFolders(): Promise<Folder[]> {
+    const result = await db.getAllAsync<Folder>('SELECT id, name, order_index, banca, question_type FROM folders ORDER BY order_index ASC, id ASC');
+    return result;
+  }
+
+  async function createFolder(name: string): Promise<number> {
+    const result = await db.runAsync('INSERT INTO folders (name, order_index) VALUES (?, ?)', name, Date.now());
+    return result.lastInsertRowId as number;
+  }
+
+  async function deleteFolder(id: number): Promise<void> {
+    await db.runAsync('DELETE FROM folders WHERE id = ?', id);
+  }
+
+  async function renameFolder(id: number, name: string): Promise<void> {
+    await db.runAsync('UPDATE folders SET name = ? WHERE id = ?', name, id);
+  }
+
+  async function updateFolderSettings(id: number, updates: { banca?: string | null; question_type?: 'MC' | 'TF' | string | null }): Promise<void> {
+    const fields: string[] = [];
+    const values: (string | null | number)[] = [];
+    if (updates.banca !== undefined) {
+      fields.push('banca = ?');
+      values.push(updates.banca);
+    }
+    if (updates.question_type !== undefined) {
+      fields.push('question_type = ?');
+      values.push(updates.question_type);
+    }
+    if (fields.length === 0) return;
+    values.push(id);
+    const sql = `UPDATE folders SET ${fields.join(', ')} WHERE id = ?`;
+    await db.runAsync(sql, ...values);
+  }
+
+  async function reorderFolders(orderedIds: number[]): Promise<void> {
+    let index = 0;
+    for (const id of orderedIds) {
+      await db.runAsync('UPDATE folders SET order_index = ? WHERE id = ?', index, id);
+      index += 1;
+    }
+  }
+
+  async function getFolder(id: number): Promise<Folder | null> {
+    const res = await db.getFirstAsync<Folder>('SELECT id, name, order_index, banca, question_type FROM folders WHERE id = ?', id);
+    return res || null;
+  }
+
+  async function getFolderByCategoryId(categoryId: number): Promise<Folder | null> {
+    const res = await db.getFirstAsync<Folder>(
+      'SELECT f.id, f.name, f.order_index, f.banca, f.question_type FROM folders f JOIN categories c ON c.folder_id = f.id WHERE c.id = ?',
+      categoryId
+    );
+    return res || null;
+  }
+
+  return { listFolders, createFolder, deleteFolder, renameFolder, updateFolderSettings, reorderFolders, getFolder, getFolderByCategoryId };
+}
 
 export function useCategoryRepository() {
   const db = useSQLiteContext();
 
-  async function listCategories(): Promise<Category[]> {
-    const result = await db.getAllAsync<Category>('SELECT id, name, order_index FROM categories ORDER BY order_index ASC, id ASC');
+  async function listCategories(folderId?: number | null): Promise<Category[]> {
+    if (folderId !== undefined) {
+      const result = await db.getAllAsync<Category>(
+        'SELECT id, name, order_index, folder_id FROM categories WHERE folder_id IS ? ORDER BY order_index ASC, id ASC',
+        folderId === null ? null : folderId
+      );
+      return result;
+    }
+    const result = await db.getAllAsync<Category>('SELECT id, name, order_index, folder_id FROM categories ORDER BY order_index ASC, id ASC');
     return result;
   }
 
-  async function createCategory(name: string): Promise<number> {
-    const result = await db.runAsync('INSERT INTO categories (name, order_index) VALUES (?, ?)', name, Date.now());
+  async function createCategory(name: string, folderId?: number | null): Promise<number> {
+    const result = await db.runAsync(
+      'INSERT INTO categories (name, order_index, folder_id) VALUES (?, ?, ?)',
+      name,
+      Date.now(),
+      folderId ?? null
+    );
     return result.lastInsertRowId as number;
   }
 
@@ -32,7 +106,11 @@ export function useCategoryRepository() {
     }
   }
 
-  return { listCategories, createCategory, deleteCategory, renameCategory, reorderCategories };
+  async function moveCategoryToFolder(categoryId: number, folderId: number | null): Promise<void> {
+    await db.runAsync('UPDATE categories SET folder_id = ? WHERE id = ?', folderId, categoryId);
+  }
+
+  return { listCategories, createCategory, deleteCategory, renameCategory, reorderCategories, moveCategoryToFolder };
 }
 
 export function useCardRepository() {

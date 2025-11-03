@@ -10,8 +10,8 @@ import { useAnswerRepository, useCardRepository } from '@/lib/repositories';
 type Item = {
   title: string;
   description: string;
-  options?: { a: string; b: string; c: string; d: string };
-  correct?: 'a' | 'b' | 'c' | 'd';
+  options?: { a?: string; b?: string; c?: string; d?: string; v?: string; f?: string };
+  correct?: 'a' | 'b' | 'c' | 'd' | 'v' | 'f';
 };
 
 export default function PracticeModal() {
@@ -29,9 +29,9 @@ export default function PracticeModal() {
   }, [params.data]);
 
   const [index, setIndex] = React.useState(0);
-  const [selected, setSelected] = React.useState<'a' | 'b' | 'c' | 'd' | null>(null);
+  const [selected, setSelected] = React.useState<'a' | 'b' | 'c' | 'd' | 'v' | 'f' | null>(null);
   const [confirmed, setConfirmed] = React.useState(false);
-  const [results, setResults] = React.useState<Array<{ idx: number; selected: 'a'|'b'|'c'|'d'; correct: 'a'|'b'|'c'|'d'|undefined; isCorrect: boolean; topic: string }>>([]);
+  const [results, setResults] = React.useState<Array<{ idx: number; selected: 'a'|'b'|'c'|'d'|'v'|'f'; correct: 'a'|'b'|'c'|'d'|'v'|'f'|undefined; isCorrect: boolean; topic: string }>>([]);
   const [showSummary, setShowSummary] = React.useState(false);
   const [saved, setSaved] = React.useState<Record<number, boolean>>({});
 
@@ -39,7 +39,7 @@ export default function PracticeModal() {
   const x = useSharedValue(0);
   const cardStyle = useAnimatedStyle(() => ({ transform: [{ translateX: x.value }] }));
 
-  function onSelect(key: 'a' | 'b' | 'c' | 'd') {
+  function onSelect(key: 'a' | 'b' | 'c' | 'd' | 'v' | 'f') {
     if (confirmed) return;
     setSelected(key);
   }
@@ -99,8 +99,8 @@ export default function PracticeModal() {
               <Animated.View style={[styles.card, styles.cardFlex, cardStyle]}>
                 <ScrollView style={{ flex: 1 }} contentContainerStyle={{ gap: 10, paddingBottom: 12 }}>
                   <ThemedText type="defaultSemiBold" style={{ marginBottom: 8 }}>{item?.title}</ThemedText>
-                  {(['a','b','c','d'] as const).map((key) => {
-                    const label = item?.options?.[key];
+                  {(['a','b','c','d','v','f'] as const).map((key) => {
+                    const label = (item?.options as any)?.[key];
                     if (!label) return null;
                     const isChosen = selected === key;
                     const isCorrect = item?.correct === key;

@@ -3,17 +3,32 @@ import { getApiKey, getModelName } from '@/lib/secure';
 type GeneratedQA = {
   title: string;
   description: string;
-  options?: { a: string; b: string; c: string; d: string };
-  correct?: 'a' | 'b' | 'c' | 'd';
+  options?: { a?: string; b?: string; c?: string; d?: string; v?: string; f?: string };
+  correct?: 'a' | 'b' | 'c' | 'd' | 'v' | 'f';
 };
 
 // Gerar questões a partir de uma categoria usando Gemini (via fetch)
 // Obs.: O usuário deve ter a variável GEMINI_API_KEY salva via modal
-export async function generateQuestionsByCategory(categoryName: string, num: number = 5): Promise<GeneratedQA[]> {
+export async function generateQuestionsByCategory(
+  categoryName: string,
+  num: number = 5,
+  opts?: { banca?: string | null; questionType?: 'MC' | 'TF' | string | null }
+): Promise<GeneratedQA[]> {
   const apiKey = await getApiKey();
   if (!apiKey) throw new Error('API key não configurada. Abra o modal e salve a chave.');
 
-  const prompt = `Gere ${num} perguntas de múltipla escolha no padrão da banca UNIRV, em graus médio e difícil, para a categoria "${categoryName}".
+  const banca = (opts?.banca || 'UNIRV').trim();
+  const type = (opts?.questionType || 'MC').toUpperCase();
+  const isTF = type === 'TF';
+
+  const prompt = isTF
+    ? `Gere ${num} perguntas de verdadeiro ou falso no padrão da banca ${banca}, em graus médio e difícil, para a categoria "${categoryName}".
+Regras:
+- Cada item deve ter: título (afirmação), alternativas (v, f) com rótulos "Verdadeiro" e "Falso", e a letra correta ('v' ou 'f').
+- Inclua também uma explicação/justificativa curta como descrição (resposta).
+- Responda SOMENTE com JSON válido, sem texto adicional e sem markdown.
+- Formato exato: [{"title": string, "description": string, "options": {"v": "Verdadeiro", "f": "Falso"}, "correct": "v"|"f"}]`
+    : `Gere ${num} perguntas de múltipla escolha no padrão da banca ${banca}, em graus médio e difícil, para a categoria "${categoryName}".
 Regras:
 - Cada item deve ter: título (pergunta), quatro alternativas (a, b, c, d) e a letra correta.
 - Inclua também uma explicação/justificativa curta como descrição (resposta).

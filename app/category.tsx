@@ -3,14 +3,14 @@ import { ThemedView } from '@/components/themed-view';
 import { ThemedTextInput } from '@/components/ThemedTextInput';
 import { Colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { generateQuestionsByCategory, generateFlashcardsFromPdf } from '@/lib/ai';
-import { useCardRepository, useCategoryRepository } from '@/lib/repositories';
+import { generateFlashcardsFromPdf, generateQuestionsByCategory } from '@/lib/ai';
+import { useCardRepository, useCategoryRepository, useFolderRepository } from '@/lib/repositories';
 import { Ionicons } from '@expo/vector-icons';
-import { Link, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
-import React from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, RefreshControl, StyleSheet, TextInput, View } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { Link, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import React from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
 import DraggableFlatList from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -21,6 +21,7 @@ export default function CategoryDetailScreen() {
   const router = useRouter();
   const { listCardsByCategory, createCard, deleteCard, updateCard, reorderCards } = useCardRepository();
   const { renameCategory, deleteCategory } = useCategoryRepository();
+  const { getFolderByCategoryId } = useFolderRepository();
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [cards, setCards] = React.useState<any[]>([]);
@@ -39,6 +40,8 @@ export default function CategoryDetailScreen() {
   const [pdfLoadingMsg, setPdfLoadingMsg] = React.useState('Estamos gerando seu resumo...');
   const [draggingId, setDraggingId] = React.useState<number | null>(null);
   const [dropTarget, setDropTarget] = React.useState<'top' | 'bottom' | null>(null);
+  const [folderBanca, setFolderBanca] = React.useState<string | null>(null);
+  const [folderQuestionType, setFolderQuestionType] = React.useState<'MC' | 'TF'>('MC');
 
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
@@ -47,6 +50,13 @@ export default function CategoryDetailScreen() {
     if (!categoryId) return;
     const data = await listCardsByCategory(categoryId);
     setCards(data);
+    try {
+      const f = await getFolderByCategoryId(categoryId);
+      if (f) {
+        setFolderBanca(f.banca ?? null);
+        setFolderQuestionType((f.question_type as any) === 'TF' ? 'TF' : 'MC');
+      }
+    } catch {}
   }, [categoryId, listCardsByCategory]);
 
   React.useEffect(() => {
@@ -70,7 +80,7 @@ export default function CategoryDetailScreen() {
   async function onGenerate() {
     try {
       setLoadingIA(true);
-      const items = await generateQuestionsByCategory(params.name || 'Geral', 5);
+      const items = await generateQuestionsByCategory(params.name || 'Geral', 5, { banca: folderBanca || undefined, questionType: folderQuestionType });
       if (!items.length) {
         Alert.alert('Aviso', 'Não foi possível interpretar a resposta da IA em JSON.');
         setLoadingIA(false);
@@ -87,7 +97,7 @@ export default function CategoryDetailScreen() {
   async function onGenerate10() {
     try {
       setLoadingIA(true);
-      const items = await generateQuestionsByCategory(params.name || 'Geral', 10);
+      const items = await generateQuestionsByCategory(params.name || 'Geral', 10, { banca: folderBanca || undefined, questionType: folderQuestionType });
       if (!items.length) {
         Alert.alert('Aviso', 'Não foi possível interpretar a resposta da IA em JSON.');
         setLoadingIA(false);
@@ -192,17 +202,6 @@ export default function CategoryDetailScreen() {
       copy.push(item);
       return copy;
     });
-  }
-
-  async function commitReorder() {
-    try {
-      const orderedIds = cards.map((c) => c.id);
-      // persistir ordem
-      const { useCardRepository } = await import('@/lib/repositories');
-      // noop: já temos no escopo; apenas garante tipagem
-    } finally {
-      // nada
-    }
   }
 
   async function onRefresh() {
@@ -330,8 +329,8 @@ export default function CategoryDetailScreen() {
                   </View>
                   {options ? (
                     <View style={{ gap: 6 }}>
-                      {(['a', 'b', 'c', 'd'] as const).map((key) => {
-                        const label = options[key];
+                      {(['a','b','c','d','v','f'] as const).map((key) => {
+                        const label = (options as any)[key];
                         if (!label) return null;
                         const isCorrect = item.correct === key;
                         return (

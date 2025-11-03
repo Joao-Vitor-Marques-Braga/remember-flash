@@ -2,7 +2,7 @@ import React from 'react';
 import { StyleSheet, View, FlatList, Pressable } from 'react-native';
 import { ThemedView } from '@/components/themed-view';
 import { ThemedText } from '@/components/themed-text';
-import { useCategoryRepository } from '@/lib/repositories';
+import { useFolderRepository } from '@/lib/repositories';
 import { useRouter } from 'expo-router';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAnswerRepository } from '@/lib/repositories';
@@ -16,14 +16,14 @@ import { useEssayRepository } from '@/lib/repositories';
 
 function HomeTab() {
   const router = useRouter();
-  const { listCategories, createCategory, deleteCategory, reorderCategories } = useCategoryRepository();
+  const { listFolders, createFolder, deleteFolder, reorderFolders } = useFolderRepository();
   const [name, setName] = React.useState('');
-  const [categories, setCategories] = React.useState<{ id: number; name: string }[]>([]);
+  const [folders, setFolders] = React.useState<{ id: number; name: string }[]>([]);
 
   const load = React.useCallback(async () => {
-    const data = await listCategories();
-    setCategories(data);
-  }, [listCategories]);
+    const data = await listFolders();
+    setFolders(data);
+  }, [listFolders]);
 
   React.useEffect(() => {
     load();
@@ -32,13 +32,13 @@ function HomeTab() {
   async function onAdd() {
     const trimmed = name.trim();
     if (!trimmed) return;
-    await createCategory(trimmed);
+    await createFolder(trimmed);
     setName('');
     await load();
   }
 
   async function onDelete(id: number) {
-    await deleteCategory(id);
+    await deleteFolder(id);
     await load();
   }
 
@@ -46,7 +46,7 @@ function HomeTab() {
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
       <ThemedView style={styles.container}>
         <DraggableFlatList
-          data={categories}
+          data={folders}
           keyExtractor={(i) => String(i.id)}
           activationDistance={8}
           ListHeaderComponent={
@@ -57,12 +57,12 @@ function HomeTab() {
               <ThemedText style={styles.subtitle}>Seus estudos, simples e minimalistas.</ThemedText>
 
               <View style={styles.card}>
-                <ThemedText type="subtitle">Nova categoria</ThemedText>
+                <ThemedText type="subtitle">Nova pasta</ThemedText>
                 <View style={styles.row}>
                   <ThemedTextInput
                     value={name}
                     onChangeText={setName}
-                    placeholder="Ex.: Português, Matemática, Direito Adm..."
+                    placeholder="Ex.: Concursos, Faculdade, Escola..."
                     style={[styles.input]}
                   />
                   <Pressable onPress={onAdd}>
@@ -71,13 +71,13 @@ function HomeTab() {
                 </View>
               </View>
 
-              <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Categorias</ThemedText>
+              <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Pastas</ThemedText>
             </View>
           }
           renderItem={({ item, drag, isActive }: { item: any; drag: () => void; isActive: boolean }) => (
             <Pressable
               style={[styles.listItem, { opacity: isActive ? 0.95 : 1 }]}
-              onPress={() => router.push({ pathname: '/category' as any, params: { id: String(item.id), name: item.name } })}
+              onPress={() => router.push({ pathname: '/folder' as any, params: { id: String(item.id), name: item.name } })}
               onLongPress={drag}
               delayLongPress={120}
             >
@@ -91,9 +91,9 @@ function HomeTab() {
             </Pressable>
           )}
           onDragEnd={async ({ data }: { data: any[] }) => {
-            setCategories(data as any[]);
-            const orderedIds = (data as any[]).map((c) => c.id);
-            await reorderCategories(orderedIds);
+            setFolders(data as any[]);
+            const orderedIds = (data as any[]).map((f) => f.id);
+            await reorderFolders(orderedIds);
             await load();
           }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
