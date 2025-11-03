@@ -199,4 +199,145 @@ export async function generateFlashcardsFromPdf(pdfBase64: string, num: number =
   return [];
 }
 
+// Analisar redação com prompt específico da UNIRV
+export async function analyzeEssay(essayText: string, imageUri?: string | null): Promise<string> {
+  const apiKey = await getApiKey();
+  if (!apiKey) throw new Error('API key não configurada. Abra o modal e salve a chave.');
+
+  const prompt = `Você é um corretor experiente de redações de concursos públicos. Faça uma análise completa e detalhada da redação fornecida.
+
+ESTRUTURA DA RESPOSTA (obrigatória):
+
+1. ACOLHIMENTO
+- Parabenize o candidato por fazer o texto
+- Destaque aspectos positivos gerais (letra legível, seguir o tema, etc.)
+
+2. TRANSCRIÇÃO DA REDAÇÃO
+- Transcreva exatamente o texto da redação, preservando a formatação original
+- Inclua o título se houver
+
+3. ANÁLISE DETALHADA NOS 3 PILARES:
+
+A) ESTRUTURA (Forma)
+- Pontos Fortes: estrutura do texto, parágrafos, introdução, desenvolvimento, conclusão
+- Ponto Principal a Melhorar: sugestões específicas para melhoria estrutural
+
+B) CONTEÚDO (Argumentação)
+- Pontos Fortes: adequação ao tema, argumentação, repertório sociocultural
+- Ponto Principal a Melhorar: sugestões para fortalecer a argumentação
+
+C) EXPRESSÃO (Gramática e Coesão)
+- Análise completa dos aspectos linguísticos
+- Principais Pontos a Corrigir: liste erros específicos com correções
+- Inclua: crase, concordância, vírgula, regência, ortografia, pontuação
+
+4. NOTA E CONSIDERAÇÕES FINAIS
+- Nota de 0 a 10 com justificativa
+- Potencial de melhoria
+- Motivação para continuar estudando
+
+Seja detalhado, educativo e motivador. Use linguagem clara e didática.`;
+
+  const model = 'gemini-2.5-flash';
+  console.log(`🤖 Analisando redação com Gemini: ${model}`);
+
+  let modelName = model;
+  let url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const contents: any[] = [
+    {
+      parts: [{ text: prompt }],
+    },
+  ];
+
+  // Se há texto da redação, adiciona ao prompt
+  if (essayText.trim()) {
+    console.log('📝 Enviando texto da redação:', essayText.substring(0, 100) + '...');
+    contents[0].parts.push({ text: `\n\nREDAÇÃO PARA ANÁLISE:\n${essayText}` });
+  } else {
+    console.log('⚠️ Nenhum texto de redação fornecido');
+  }
+
+  // Se há imagem, adiciona à análise
+  if (imageUri) {
+    try {
+      console.log('📷 Processando imagem da redação...');
+      const response = await fetch(imageUri);
+      const blob = await response.blob();
+      
+      const base64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result as string);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+      
+      const base64Data = base64.split(',')[1];
+      
+      contents[0].parts.push({
+        inline_data: {
+          mime_type: 'image/jpeg',
+          data: base64Data,
+        },
+      });
+      
+      contents[0].parts.push({ 
+        text: `\n\nEsta é uma imagem de uma redação manuscrita. Por favor, analise o texto visível na imagem e forneça uma avaliação completa.` 
+      });
+      
+      console.log('✅ Imagem processada e adicionada à análise');
+    } catch (error) {
+      console.warn('Erro ao processar imagem:', error);
+      // Fallback: adicionar nota sobre imagem
+      contents[0].parts.push({ 
+        text: `\n\nIMAGEM ANEXADA: O usuário enviou uma imagem da redação para análise. Por favor, considere que esta é uma redação manuscrita e analise conforme os critérios da UNIRV.` 
+      });
+    }
+  }
+
+  const body = {
+    generationConfig: {
+      temperature: 0.7,
+      maxOutputTokens: 8192,
+    },
+    contents,
+  };
+
+  let res = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const fallbackModel = 'gemini-1.5-flash';
+    if (modelName !== fallbackModel && res.status === 404) {
+      console.log(`⚠️ Modelo ${modelName} não disponível, usando fallback: ${fallbackModel}`);
+      url = `https://generativelanguage.googleapis.com/v1beta/models/${fallbackModel}:generateContent?key=${apiKey}`;
+      res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    }
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error('Falha na requisição à IA: ' + text);
+    }
+  }
+
+  const data = await res.json();
+  console.log('📥 Resposta da IA:', JSON.stringify(data, null, 2));
+  
+  const text: string = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+  
+  if (!text.trim()) {
+    console.error('❌ Resposta vazia da IA. Dados recebidos:', data);
+    throw new Error('Resposta vazia da IA. Verifique os logs para mais detalhes.');
+  }
+
+  console.log('✅ Análise recebida:', text.substring(0, 100) + '...');
+  return text;
+}
+
 

@@ -92,7 +92,6 @@ export default function PracticeModal() {
   return (
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
       <ThemedView style={styles.container}>
-        <ThemedText type="title">{params.name || 'Prática'}</ThemedText>
         <View style={{ height: 12 }} />
         {!showSummary ? (
           <>

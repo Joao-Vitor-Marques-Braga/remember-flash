@@ -23,6 +23,7 @@ function RootInner() {
             <Stack.Screen name="index" options={{ headerShown: false }} />
             <Stack.Screen name="category" options={{ title: 'Cards' }} />
             <Stack.Screen name="practice" options={{ presentation: 'modal', title: 'Prática' }} />
+            <Stack.Screen name="essay" options={{ title: 'Redação' }} />
             <Stack.Screen name="modal" options={{ presentation: 'modal', title: 'Configurar IA' }} />
           </Stack>
           <StatusBar style="auto" />

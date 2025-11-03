@@ -11,10 +11,12 @@ import { Colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { useColorScheme } from '@/hooks/use-color-scheme'; 
 import { ThemedTextInput } from '@/components/ThemedTextInput';
+import DraggableFlatList from 'react-native-draggable-flatlist';
+import { useEssayRepository } from '@/lib/repositories';
 
 function HomeTab() {
   const router = useRouter();
-  const { listCategories, createCategory, deleteCategory } = useCategoryRepository();
+  const { listCategories, createCategory, deleteCategory, reorderCategories } = useCategoryRepository();
   const [name, setName] = React.useState('');
   const [categories, setCategories] = React.useState<{ id: number; name: string }[]>([]);
 
@@ -43,9 +45,10 @@ function HomeTab() {
   return (
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
       <ThemedView style={styles.container}>
-        <FlatList
+        <DraggableFlatList
           data={categories}
           keyExtractor={(i) => String(i.id)}
+          activationDistance={8}
           ListHeaderComponent={
             <View>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -71,10 +74,12 @@ function HomeTab() {
               <ThemedText type="subtitle" style={{ marginBottom: 8 }}>Categorias</ThemedText>
             </View>
           }
-          renderItem={({ item }) => (
+          renderItem={({ item, drag, isActive }: { item: any; drag: () => void; isActive: boolean }) => (
             <Pressable
-              style={styles.listItem}
+              style={[styles.listItem, { opacity: isActive ? 0.95 : 1 }]}
               onPress={() => router.push({ pathname: '/category' as any, params: { id: String(item.id), name: item.name } })}
+              onLongPress={drag}
+              delayLongPress={120}
             >
               <View style={{ flexDirection: 'row', gap: 8, flex: 1, alignItems: 'flex-start' }}>
                 <Ionicons name="folder" size={20} color={Colors.light.tint} />
@@ -85,6 +90,12 @@ function HomeTab() {
               </Pressable>
             </Pressable>
           )}
+          onDragEnd={async ({ data }: { data: any[] }) => {
+            setCategories(data as any[]);
+            const orderedIds = (data as any[]).map((c) => c.id);
+            await reorderCategories(orderedIds);
+            await load();
+          }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           contentContainerStyle={{ paddingBottom: 16 }}
           ListFooterComponent={<View style={{ height: 12 }} />}
@@ -100,9 +111,18 @@ function HomeTab() {
 
 
 function QuestionsTab() {
-  const { getStatsByCategory } = useAnswerRepository();
-  const [stats, setStats] = React.useState<Array<{ category_name: string | null; total: number; acertos: number; erros: number }>>([]);
-  React.useEffect(() => { (async () => setStats(await getStatsByCategory()))(); }, [getStatsByCategory]);
+  const { getStatsByCategory, reorderStats } = useAnswerRepository();
+  const [stats, setStats] = React.useState<Array<{ category_name: string | null; total: number; acertos: number; erros: number; order_index: number }>>([]);
+  
+  const load = React.useCallback(async () => {
+    const data = await getStatsByCategory();
+    setStats(data);
+  }, [getStatsByCategory]);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
   const colorScheme = useColorScheme() ?? 'light';
   const surface = useThemeColor({}, 'surface');
   const border = useThemeColor({}, 'border');
@@ -111,17 +131,32 @@ function QuestionsTab() {
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
       <ThemedView style={styles.container}>
         <ThemedText type="title" style={styles.title}>Questões</ThemedText>
-        <FlatList
+        <DraggableFlatList
           data={stats}
           keyExtractor={(i, idx) => String(i.category_name ?? 'Geral') + idx}
-          renderItem={({ item }) => {
+          activationDistance={8}
+          renderItem={({ item, drag, isActive }: { item: any; drag: () => void; isActive: boolean }) => {
             const name = item.category_name || 'Geral';
             const total = Math.max(0, item.total || 0);
             const acertos = Math.max(0, item.acertos || 0);
             const erros = Math.max(0, item.erros || 0);
             const perc = total > 0 ? Math.round((acertos / total) * 100) : 0;
             return (
-              <View style={[styles.statItem, { backgroundColor: surface, borderColor: border }]}> 
+              <Pressable
+                style={[
+                  styles.statItem, 
+                  { 
+                    backgroundColor: surface, 
+                    borderColor: border,
+                    opacity: isActive ? 0.8 : 1,
+                    transform: isActive ? [{ scale: 1.02 }] : [{ scale: 1 }],
+                    shadowOpacity: isActive ? 0.3 : 0.1,
+                    elevation: isActive ? 8 : 2,
+                  }
+                ]}
+                onLongPress={drag}
+                delayLongPress={120}
+              > 
                 <View style={{ flexDirection: 'row', gap: 10, alignItems: 'flex-start' }}>
                   <Ionicons name="stats-chart" size={20} color={tint} />
                   <View style={{ flex: 1, gap: 6 }}>
@@ -140,8 +175,14 @@ function QuestionsTab() {
                     </View>
                   </View>
                 </View>
-              </View>
+              </Pressable>
             );
+          }}
+          onDragEnd={async ({ data }: { data: any[] }) => {
+            setStats(data as any[]);
+            const orderedCategoryNames = (data as any[]).map((s) => s.category_name);
+            await reorderStats(orderedCategoryNames);
+            // Não precisa chamar load() pois já atualizamos o estado local
           }}
           ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
           contentContainerStyle={{ paddingBottom: 16 }}
@@ -151,8 +192,135 @@ function QuestionsTab() {
   );
 }
 
+function EssayTab() {
+  const router = useRouter();
+  const { listEssays, deleteEssay } = useEssayRepository();
+  const [essays, setEssays] = React.useState<Array<{ id: number; title: string | null; score: number | null; created_at: string | null }>>([]);
+  const colorScheme = useColorScheme() ?? 'light';
+  const surface = useThemeColor({}, 'surface');
+  const border = useThemeColor({}, 'border');
+  const tint = Colors[colorScheme].tint;
+
+  const loadEssays = React.useCallback(async () => {
+    const data = await listEssays();
+    setEssays(data);
+  }, [listEssays]);
+
+  React.useEffect(() => {
+    loadEssays();
+  }, [loadEssays]);
+
+  const handleDeleteEssay = async (id: number) => {
+    await deleteEssay(id);
+    await loadEssays();
+  };
+
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '';
+    const date = new Date(dateString);
+    return date.toLocaleDateString('pt-BR', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  };
+
+  return (
+    <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
+      <ThemedView style={styles.container}>
+        <ThemedText type="title" style={styles.title}>Redações</ThemedText>
+        <ThemedText style={styles.subtitle}>
+          Suas redações analisadas e salvas
+        </ThemedText>
+
+        {/* Botão para nova análise */}
+        <Pressable
+          style={[styles.card, { backgroundColor: tint + '20', borderColor: tint }]}
+          onPress={() => router.push('/essay' as any)}
+        >
+          <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+            <View style={[styles.iconPill, { backgroundColor: tint }]}>
+              <Ionicons name="add" size={24} color="#fff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <ThemedText type="defaultSemiBold" style={{ color: tint }}>Nova Análise</ThemedText>
+              <ThemedText style={{ opacity: 0.7, fontSize: 14 }}>
+                Escreva ou envie foto da redação para correção
+              </ThemedText>
+            </View>
+            <Ionicons name="chevron-forward" size={20} color={tint} />
+          </View>
+        </Pressable>
+
+        {/* Lista de redações */}
+        {essays.length > 0 ? (
+          <View style={{ marginTop: 16 }}>
+            <ThemedText type="subtitle" style={{ marginBottom: 12 }}>
+              Redações Salvas ({essays.length})
+            </ThemedText>
+            <FlatList
+              data={essays}
+              keyExtractor={(item) => String(item.id)}
+              renderItem={({ item }) => (
+                <Pressable
+                  style={[styles.card, { backgroundColor: surface, borderColor: border }]}
+                  onPress={() => router.push({ pathname: '/essay' as any, params: { essayId: String(item.id) } })}
+                >
+                  <View style={{ flexDirection: 'row', gap: 12, alignItems: 'center' }}>
+                    <View style={[styles.iconPill, { backgroundColor: item.score ? (item.score >= 7 ? '#4CAF50' : item.score >= 5 ? '#FF9800' : '#F44336') + '33' : tint + '33' }]}>
+                      <Ionicons 
+                        name="document-text" 
+                        size={24} 
+                        color={item.score ? (item.score >= 7 ? '#4CAF50' : item.score >= 5 ? '#FF9800' : '#F44336') : tint} 
+                      />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <ThemedText type="defaultSemiBold" numberOfLines={1}>
+                        {item.title || 'Redação'}
+                      </ThemedText>
+                      <ThemedText style={{ opacity: 0.7, fontSize: 14 }}>
+                        {formatDate(item.created_at)}
+                      </ThemedText>
+                      {item.score && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 2 }}>
+                          <Ionicons name="star" size={14} color={item.score >= 7 ? '#4CAF50' : item.score >= 5 ? '#FF9800' : '#F44336'} />
+                          <ThemedText style={{ fontSize: 14, fontWeight: '600', color: item.score >= 7 ? '#4CAF50' : item.score >= 5 ? '#FF9800' : '#F44336' }}>
+                            {item.score.toFixed(1)}/10
+                          </ThemedText>
+                        </View>
+                      )}
+                    </View>
+                    <Pressable 
+                      onPress={(e) => { e.stopPropagation(); handleDeleteEssay(item.id); }}
+                      style={{ padding: 4 }}
+                    >
+                      <Ionicons name="trash" size={20} color="#F44336" />
+                    </Pressable>
+                  </View>
+                </Pressable>
+              )}
+              ItemSeparatorComponent={() => <View style={{ height: 8 }} />}
+              contentContainerStyle={{ paddingBottom: 16 }}
+            />
+          </View>
+        ) : (
+          <View style={[styles.card, { backgroundColor: surface, borderColor: border, alignItems: 'center', paddingVertical: 32 }]}>
+            <Ionicons name="document-outline" size={48} color={tint} style={{ opacity: 0.5 }} />
+            <ThemedText style={{ opacity: 0.7, textAlign: 'center', marginTop: 12 }}>
+              Nenhuma redação salva ainda.{'\n'}
+              Faça sua primeira análise!
+            </ThemedText>
+          </View>
+        )}
+      </ThemedView>
+    </SafeAreaView>
+  );
+}
+
 export default function HomeScreen() {
-  const [tab, setTab] = React.useState<'home' | 'questions'>('home');
+  const [tab, setTab] = React.useState<'home' | 'questions' | 'essay'>('home');
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const surface = useThemeColor({}, 'surface');
@@ -160,7 +328,7 @@ export default function HomeScreen() {
   const tint = Colors[colorScheme].tint;
   return (
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
-      {tab === 'home' ? <HomeTab /> : <QuestionsTab />}
+      {tab === 'home' ? <HomeTab /> : tab === 'questions' ? <QuestionsTab /> : <EssayTab />}
       <View
         style={[
           styles.fabBar,
@@ -183,6 +351,13 @@ export default function HomeScreen() {
           iconName="school"
           tint={tint}
           onPress={() => setTab('questions')}
+        />
+        <TabButton
+          active={tab === 'essay'}
+          label="Redação"
+          iconName="create"
+          tint={tint}
+          onPress={() => setTab('essay')}
         />
       </View>
     </SafeAreaView>
@@ -237,6 +412,12 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderRadius: 12,
     padding: 14,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowRadius: 4,
   },
   listItem: {
     borderWidth: StyleSheet.hairlineWidth,

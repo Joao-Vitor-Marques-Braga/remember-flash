@@ -1,16 +1,16 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import type { Card, Category } from '@/lib/db';
+import type { Card, Category, Essay } from '@/lib/db';
 
 export function useCategoryRepository() {
   const db = useSQLiteContext();
 
   async function listCategories(): Promise<Category[]> {
-    const result = await db.getAllAsync<Category>('SELECT id, name FROM categories ORDER BY name ASC');
+    const result = await db.getAllAsync<Category>('SELECT id, name, order_index FROM categories ORDER BY order_index ASC, id ASC');
     return result;
   }
 
   async function createCategory(name: string): Promise<number> {
-    const result = await db.runAsync('INSERT INTO categories (name) VALUES (?)', name);
+    const result = await db.runAsync('INSERT INTO categories (name, order_index) VALUES (?, ?)', name, Date.now());
     return result.lastInsertRowId as number;
   }
 
@@ -22,7 +22,17 @@ export function useCategoryRepository() {
     await db.runAsync('UPDATE categories SET name = ? WHERE id = ?', name, id);
   }
 
-  return { listCategories, createCategory, deleteCategory, renameCategory };
+  async function reorderCategories(orderedIds: number[]): Promise<void> {
+    // usa transação simples sequencial para atualizar order_index conforme posição
+    // menor order_index = mais ao topo
+    let index = 0;
+    for (const id of orderedIds) {
+      await db.runAsync('UPDATE categories SET order_index = ? WHERE id = ?', index, id);
+      index += 1;
+    }
+  }
+
+  return { listCategories, createCategory, deleteCategory, renameCategory, reorderCategories };
 }
 
 export function useCardRepository() {
@@ -113,17 +123,64 @@ export function useAnswerRepository() {
     return result.lastInsertRowId as number;
   }
 
-  async function getStatsByCategory(): Promise<Array<{ category_name: string | null; total: number; acertos: number; erros: number }>> {
+  async function getStatsByCategory(): Promise<Array<{ category_name: string | null; total: number; acertos: number; erros: number; order_index: number }>> {
     const rows = await db.getAllAsync<any>(
-      `SELECT category_name, COUNT(*) as total, SUM(is_correct) as acertos, COUNT(*) - SUM(is_correct) as erros
+      `SELECT category_name, COUNT(*) as total, SUM(is_correct) as acertos, COUNT(*) - SUM(is_correct) as erros, MIN(order_index) as order_index
        FROM answers
        GROUP BY category_name
-       ORDER BY total DESC`
+       ORDER BY order_index ASC, total DESC`
     );
     return rows;
   }
 
-  return { saveAnswer, getStatsByCategory };
+  async function reorderStats(orderedCategoryNames: (string | null)[]): Promise<void> {
+    // Atualiza order_index para cada categoria baseado na nova ordem
+    let index = 0;
+    for (const categoryName of orderedCategoryNames) {
+      await db.runAsync('UPDATE answers SET order_index = ? WHERE category_name = ?', index, categoryName);
+      index += 1;
+    }
+  }
+
+  return { saveAnswer, getStatsByCategory, reorderStats };
+}
+
+export function useEssayRepository() {
+  const db = useSQLiteContext();
+
+  async function listEssays(): Promise<Essay[]> {
+    const result = await db.getAllAsync<Essay>('SELECT * FROM essays ORDER BY created_at DESC');
+    return result;
+  }
+
+  async function saveEssay(
+    title: string | null,
+    essayText: string | null,
+    imageUri: string | null,
+    analysis: string,
+    score: number | null
+  ): Promise<number> {
+    const result = await db.runAsync(
+      'INSERT INTO essays (title, essay_text, image_uri, analysis, score) VALUES (?, ?, ?, ?, ?)',
+      title,
+      essayText,
+      imageUri,
+      analysis,
+      score
+    );
+    return result.lastInsertRowId as number;
+  }
+
+  async function getEssay(id: number): Promise<Essay | null> {
+    const result = await db.getFirstAsync<Essay>('SELECT * FROM essays WHERE id = ?', id);
+    return result || null;
+  }
+
+  async function deleteEssay(id: number): Promise<void> {
+    await db.runAsync('DELETE FROM essays WHERE id = ?', id);
+  }
+
+  return { listEssays, saveEssay, getEssay, deleteEssay };
 }
 
 
