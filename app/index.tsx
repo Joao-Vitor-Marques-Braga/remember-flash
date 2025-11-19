@@ -1,19 +1,17 @@
-import React from 'react';
-import { StyleSheet, View, FlatList, Pressable } from 'react-native';
-import { ThemedView } from '@/components/themed-view';
+import ScheduleTab from '@/app/ScheduleTab';
 import { ThemedText } from '@/components/themed-text';
-import { useFolderRepository } from '@/lib/repositories';
-import { useRouter } from 'expo-router';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAnswerRepository } from '@/lib/repositories';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/theme';
-import { useThemeColor } from '@/hooks/use-theme-color';
-import { useColorScheme } from '@/hooks/use-color-scheme'; 
+import { ThemedView } from '@/components/themed-view';
 import { ThemedTextInput } from '@/components/ThemedTextInput';
+import { Colors } from '@/constants/theme';
+import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useThemeColor } from '@/hooks/use-theme-color';
+import { useAnswerRepository, useEssayRepository, useFolderRepository } from '@/lib/repositories';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React from 'react';
+import { FlatList, Pressable, StyleSheet, View } from 'react-native';
 import DraggableFlatList from 'react-native-draggable-flatlist';
-import { useEssayRepository } from '@/lib/repositories';
-import { ScheduleTab } from '@/components/ScheduleTab';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 function HomeTab() {
   const router = useRouter();

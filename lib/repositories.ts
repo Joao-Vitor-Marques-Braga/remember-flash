@@ -1,5 +1,5 @@
 import { useSQLiteContext } from 'expo-sqlite';
-import type { Card, Category, Essay, Folder, StudyPlan, StudyEvent, StudySuggestion } from '@/lib/db';
+import type { Card, Category, Essay, Folder, StudyPlan, StudyEvent } from '@/lib/db';
 import { eachDayOfInterval, startOfDay, endOfDay, parseISO } from 'date-fns';
 import { useCallback } from 'react';
 import { generateStudySchedule } from '@/lib/ai';
@@ -262,19 +262,9 @@ export function useEssayRepository() {
 export function useStudyRepository() {
   const db = useSQLiteContext();
 
-  const ensureSuggestion = useCallback(async (categoryId: number, topic: string) => {
-    const exists = await db.getFirstAsync('SELECT id FROM study_suggestions WHERE category_id = ?', categoryId);
-    if (!exists) {
-      const query = encodeURIComponent(topic + ' aula');
-      const url = `https://www.youtube.com/results?search_query=${query}`;
-      await db.runAsync(
-        'INSERT INTO study_suggestions (category_id, title, url, watched) VALUES (?, ?, ?, ?)',
-        categoryId, `Aula sobre ${topic}`, url, 0
-      );
-    }
-  }, [db]);
-
   const generateEventsForPlan = useCallback(async (planId: number, folderId: number, examDate: string, studyDays: number[], maxTopics: number = 1) => {
+    // garante FK ativo nesta conexão
+    try { await db.runAsync('PRAGMA foreign_keys = ON'); } catch {}
     const categories = await db.getAllAsync<Category>('SELECT * FROM categories WHERE folder_id = ? ORDER BY order_index ASC', folderId);
     if (categories.length === 0) return;
 
@@ -319,11 +309,14 @@ export function useStudyRepository() {
                        const cat = categories.find(c => c.name.toLowerCase() === topicName.toLowerCase()) || categories.find(c => topicName.toLowerCase().includes(c.name.toLowerCase()));
                        
                        if (cat) {
-                           await db.runAsync(
+                           try {
+                             await db.runAsync(
                                'INSERT INTO study_events (plan_id, category_id, date, completed) VALUES (?, ?, ?, ?)',
                                planId, cat.id, date.toISOString(), 0
-                           );
-                           await ensureSuggestion(cat.id, cat.name);
+                             );
+                           } catch (e) {
+                             console.warn('Failed to insert study_event (AI schedule)', { planId, categoryId: cat.id, date: date.toISOString(), error: String(e) });
+                           }
                        }
                    }
                 }
@@ -341,11 +334,14 @@ export function useStudyRepository() {
        // Add up to maxTopics events for this day
        for (let k = 0; k < maxTopics; k++) {
            const category = categories[categoryIndex % categories.length];
-           await db.runAsync(
-               'INSERT INTO study_events (plan_id, category_id, date, completed) VALUES (?, ?, ?, ?)',
-               planId, category.id, date.toISOString(), 0
-           );
-           await ensureSuggestion(category.id, category.name);
+           try {
+             await db.runAsync(
+                 'INSERT INTO study_events (plan_id, category_id, date, completed) VALUES (?, ?, ?, ?)',
+                 planId, category.id, date.toISOString(), 0
+             );
+           } catch (e) {
+             console.warn('Failed to insert study_event (fallback)', { planId, categoryId: category.id, date: date.toISOString(), error: String(e) });
+           }
            categoryIndex++;
            
            // If we cycled through all categories, maybe stop adding for this day if we want to spread them out?
@@ -353,7 +349,7 @@ export function useStudyRepository() {
        }
     }
 
-  }, [db, ensureSuggestion]);
+  }, [db]);
 
   const listPlans = useCallback(async (): Promise<StudyPlan[]> => {
     return await db.getAllAsync<StudyPlan>('SELECT * FROM study_plans ORDER BY created_at DESC');
@@ -405,13 +401,5 @@ export function useStudyRepository() {
     await db.runAsync('DELETE FROM study_plans WHERE id = ?', id);
   }, [db]);
 
-  const listSuggestions = useCallback(async (categoryId: number): Promise<StudySuggestion[]> => {
-    return await db.getAllAsync<StudySuggestion>('SELECT * FROM study_suggestions WHERE category_id = ?', categoryId);
-  }, [db]);
-
-  const toggleSuggestion = useCallback(async (id: number, watched: boolean): Promise<void> => {
-    await db.runAsync('UPDATE study_suggestions SET watched = ? WHERE id = ?', watched ? 1 : 0, id);
-  }, [db]);
-
-  return { listPlans, getPlan, createPlan, updatePlanEvents, getEvents, toggleEvent, deletePlan, listSuggestions, toggleSuggestion };
+  return { listPlans, getPlan, createPlan, updatePlanEvents, getEvents, toggleEvent, deletePlan };
 }

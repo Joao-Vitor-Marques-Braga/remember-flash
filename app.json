@@ -10,6 +10,7 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
+      "icon": "./assets/images/icon.png",
       "bundleIdentifier": "com.startechsolutions.rememberflash",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false

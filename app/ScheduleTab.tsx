@@ -1,16 +1,15 @@
-import React from 'react';
-import { StyleSheet, View, ScrollView, Pressable, Alert, Modal, Switch, ActivityIndicator } from 'react-native';
-import { ThemedText } from './themed-text';
-import { ThemedView } from './themed-view';
-import { ThemedTextInput } from './ThemedTextInput';
-import { Calendar, LocaleConfig } from 'react-native-calendars';
-import { useStudyRepository, useFolderRepository } from '@/lib/repositories';
-import { Ionicons } from '@expo/vector-icons';
-import { Colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
-import { format, parseISO, isSameDay, addDays } from 'date-fns';
+import { useFolderRepository, useStudyRepository } from '@/lib/repositories';
+import { Ionicons } from '@expo/vector-icons';
+import { addDays, format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { useRouter } from 'expo-router';
+import React from 'react';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Calendar, LocaleConfig } from 'react-native-calendars';
+import { ThemedText } from '../components/themed-text';
+import { ThemedView } from '../components/themed-view';
+import { ThemedTextInput } from '../components/ThemedTextInput';
 
 // Configuração do Calendário para PT-BR
 LocaleConfig.locales['pt-br'] = {
@@ -22,7 +21,7 @@ LocaleConfig.locales['pt-br'] = {
 };
 LocaleConfig.defaultLocale = 'pt-br';
 
-export function ScheduleTab() {
+export default function ScheduleTab() {
   const router = useRouter();
   const { listPlans, createPlan, getEvents, toggleEvent, updatePlanEvents, deletePlan } = useStudyRepository();
   const { listFolders } = useFolderRepository();
@@ -36,6 +35,8 @@ export function ScheduleTab() {
   const [showOptionsModal, setShowOptionsModal] = React.useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = React.useState(false);
   const [showSuccessModal, setShowSuccessModal] = React.useState(false);
+  const [showGeneratingModal, setShowGeneratingModal] = React.useState(false);
+  const [generatingMsg, setGeneratingMsg] = React.useState('Criando cronograma...');
   
   // Form States
   const [folders, setFolders] = React.useState<any[]>([]);
@@ -50,6 +51,14 @@ export function ScheduleTab() {
   const border = useThemeColor({}, 'border');
   const tint = useThemeColor({}, 'tint');
   const text = useThemeColor({}, 'text');
+
+  // Máscara de data: dd/mm/aaaa
+  const maskDateInput = React.useCallback((value: string) => {
+    const digits = String(value || '').replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return digits.slice(0, 2) + '/' + digits.slice(2);
+    return digits.slice(0, 2) + '/' + digits.slice(2, 4) + '/' + digits.slice(4);
+  }, []);
 
   const loadData = React.useCallback(async () => {
     setLoading(true);
@@ -95,6 +104,9 @@ export function ScheduleTab() {
       const [d, m, y] = examDate.split('/').map(Number);
       const isoDate = new Date(y, m - 1, d).toISOString();
 
+      setShowCreateModal(false);
+      setGeneratingMsg('Criando cronograma...');
+      setShowGeneratingModal(true);
       setLoading(true);
       try {
           await createPlan({
@@ -105,17 +117,20 @@ export function ScheduleTab() {
               studyDays: selectedDays,
               maxTopics: Number(maxTopics) || 1
           });
+          setGeneratingMsg('Finalizando...');
           setShowCreateModal(false);
           setGoal('');
           setExamDate('');
           setMaxTopics('2');
           setSelectedFolderId(null);
           await loadData();
+          setShowGeneratingModal(false);
           setShowSuccessModal(true);
       } catch (e: any) {
           Alert.alert('Erro', e.message);
       } finally {
           setLoading(false);
+          setShowGeneratingModal(false);
       }
   }
 
@@ -195,7 +210,7 @@ export function ScheduleTab() {
                       >
                           <ThemedText type="defaultSemiBold">{plan.goal}</ThemedText>
                           <ThemedText style={{ fontSize: 10, opacity: 0.7 }}>
-                              {format(parseISO(plan.exam_date), 'dd/MM/yy')}
+                              Data da prova: {format(parseISO(plan.exam_date), 'dd/MM/yy')}
                           </ThemedText>
                       </Pressable>
                   ))}
@@ -293,7 +308,26 @@ export function ScheduleTab() {
                  <ThemedTextInput value={goal} onChangeText={setGoal} placeholder="Nome do objetivo" style={styles.input} />
 
                  <ThemedText type="defaultSemiBold">Data da Prova (DD/MM/AAAA)</ThemedText>
-                 <ThemedTextInput value={examDate} onChangeText={setExamDate} placeholder="31/12/2025" keyboardType="numbers-and-punctuation" style={styles.input} />
+                 <ThemedTextInput
+                   value={examDate}
+                   onChangeText={(t) => {
+                     const prevDigits = examDate.replace(/\D/g, '');
+                     const tDigits = String(t || '').replace(/\D/g, '');
+                     let nextDigits = tDigits;
+                     if (t.length < examDate.length) {
+                       // backspace: remove último dígito
+                       nextDigits = prevDigits.slice(0, -1);
+                     } else if (tDigits.length > prevDigits.length) {
+                       // adicionou um novo dígito
+                       nextDigits = prevDigits + tDigits.slice(-1);
+                     } // caso contrário, mantém tDigits
+                     setExamDate(maskDateInput(nextDigits));
+                   }}
+                   placeholder="31/12/2025"
+                   keyboardType="number-pad"
+                   style={styles.input}
+                   maxLength={10}
+                 />
 
                  <ThemedText type="defaultSemiBold">Minutos por dia</ThemedText>
                  <ThemedTextInput value={dailyMinutes} onChangeText={setDailyMinutes} keyboardType="numeric" style={styles.input} />
@@ -330,6 +364,19 @@ export function ScheduleTab() {
                  </View>
              </ScrollView>
          </ThemedView>
+      </Modal>
+
+      {/* Modal de Progresso - Criando Cronograma */}
+      <Modal visible={showGeneratingModal} transparent animationType="fade" onRequestClose={() => setShowGeneratingModal(false)}>
+          <View style={styles.modalBackdrop}>
+              <View style={[styles.modalCard, { alignItems: 'center', gap: 12, backgroundColor: surface, borderColor: border }]}>
+                  <ActivityIndicator />
+                  <ThemedText>{generatingMsg}</ThemedText>
+                  <ThemedText style={{ opacity: 0.7, fontSize: 12, textAlign: 'center' }}>
+                      Distribuindo matérias... isso pode levar alguns segundos.
+                  </ThemedText>
+              </View>
+          </View>
       </Modal>
 
       {/* Modal de Opções */}
@@ -430,6 +477,7 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
+    marginBottom: 50
   },
   header: {
     flexDirection: 'row',

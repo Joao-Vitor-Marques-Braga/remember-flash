@@ -1,4 +1,4 @@
-import { getApiKey, getModelName } from '@/lib/secure';
+import { getApiKey } from '@/lib/secure';
 
 type GeneratedQA = {
   title: string;
@@ -394,9 +394,7 @@ Retorne APENAS um JSON válido com a seguinte estrutura, sem texto antes ou depo
 ]
 O dayIndex deve ir de 0 até ${params.availableDays - 1}.`;
 
-  const model = 'gemini-2.5-flash';
-  const modelName = model;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+  const tryModels = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-flash'];
 
   const body = {
     generationConfig: {
@@ -409,44 +407,51 @@ O dayIndex deve ir de 0 até ${params.availableDays - 1}.`;
     ],
   };
 
-  try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
-
-    if (!res.ok) {
-      const errText = await res.text();
-      console.error(`AI Request Failed: ${res.status} ${res.statusText}`, errText);
-      throw new Error('Failed to generate schedule');
-    }
-
-    const data = await res.json();
-    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
-    
-    // Parse JSON
-    let schedule;
+  for (const modelName of tryModels) {
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
     try {
-      schedule = JSON.parse(text);
-    } catch (e) {
-      // Fallback: try to extract JSON block
-      const match = text.match(/```(?:json)?\s*([\s\S]*?)```/i) || text.match(/\[[\s\S]*\]/);
-      if (match) {
-        try {
-          schedule = JSON.parse(match[1] || match[0]);
-        } catch {
-          console.warn("Failed to parse fallback JSON for schedule");
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        console.warn(`AI Request Failed on ${modelName}: ${res.status} ${res.statusText}`, errText);
+        continue; // tenta próximo modelo
+      }
+
+      const data = await res.json();
+      const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+      
+      // Parse JSON
+      let schedule: any;
+      try {
+        schedule = JSON.parse(text);
+      } catch (e) {
+        // Fallback: try to extract JSON block
+        const match = text.match(/```(?:json)?\s*([\s\S]*?)```/i) || text.match(/\[[\s\S]*\]/);
+        if (match) {
+          try {
+            schedule = JSON.parse(match[1] || match[0]);
+          } catch {
+            console.warn(`Failed to parse fallback JSON for schedule from ${modelName}`);
+          }
         }
       }
-    }
 
-    if (Array.isArray(schedule)) return schedule;
-    if (schedule?.schedule && Array.isArray(schedule.schedule)) return schedule.schedule;
-    
-    throw new Error('Invalid schedule format');
-  } catch (e) {
-    console.error("AI Schedule Error", e);
-    return [];
+      if (Array.isArray(schedule)) return schedule as GeneratedSchedule[];
+      if (schedule?.schedule && Array.isArray(schedule.schedule)) return schedule.schedule as GeneratedSchedule[];
+
+      console.warn(`Invalid schedule format from ${modelName}, trying next model...`);
+      // tenta próximo modelo
+    } catch (e) {
+      console.warn(`AI Schedule Error on ${modelName}`, e);
+      // tenta próximo modelo
+    }
   }
+
+  // se todos modelos falharem, retorna vazio para cair no fallback local
+  return [];
 }
