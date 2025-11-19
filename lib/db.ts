@@ -50,6 +50,39 @@ CREATE TABLE IF NOT EXISTS essays (
   score REAL,
   created_at DATETIME DEFAULT (datetime('now'))
 );
+
+CREATE TABLE IF NOT EXISTS study_plans (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  folder_id INTEGER NOT NULL,
+  goal TEXT NOT NULL,
+  exam_date DATETIME NOT NULL,
+  daily_minutes INTEGER NOT NULL,
+  max_topics INTEGER DEFAULT 1, -- Novo campo
+  study_days TEXT NOT NULL, -- JSON string of day numbers (0-6)
+  created_at DATETIME DEFAULT (datetime('now')),
+  FOREIGN KEY (folder_id) REFERENCES folders(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS study_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  plan_id INTEGER NOT NULL,
+  category_id INTEGER,
+  date DATETIME NOT NULL,
+  completed INTEGER DEFAULT 0,
+  FOREIGN KEY (plan_id) REFERENCES study_plans(id) ON DELETE CASCADE ON UPDATE CASCADE,
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS study_suggestions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  category_id INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  url TEXT NOT NULL,
+  watched INTEGER DEFAULT 0,
+  type TEXT DEFAULT 'youtube',
+  created_at DATETIME DEFAULT (datetime('now')),
+  FOREIGN KEY (category_id) REFERENCES categories(id) ON DELETE CASCADE ON UPDATE CASCADE
+);
 `;
 
 export async function migrateDb(database: SQLiteDatabase): Promise<void> {
@@ -109,6 +142,13 @@ export async function migrateDb(database: SQLiteDatabase): Promise<void> {
       await database.execAsync("UPDATE folders SET order_index = id WHERE order_index IS NULL");
     }
   }
+
+  // Migração para max_topics em study_plans
+  const planCols = await database.getAllAsync<{ name: string }>("PRAGMA table_info('study_plans')");
+  const planColNames = new Set(planCols.map((c) => c.name));
+  if (planCols.length > 0 && !planColNames.has('max_topics')) {
+    await database.execAsync("ALTER TABLE study_plans ADD COLUMN max_topics INTEGER DEFAULT 1");
+  }
 }
 
 export type Category = {
@@ -146,4 +186,34 @@ export type Folder = {
   question_type?: 'MC' | 'TF' | string | null;
 };
 
+export type StudyPlan = {
+  id: number;
+  folder_id: number;
+  goal: string;
+  exam_date: string;
+  daily_minutes: number;
+  max_topics: number; // Novo campo
+  study_days: string; // JSON string
+  created_at: string | null;
+};
 
+export type StudyEvent = {
+  id: number;
+  plan_id: number;
+  category_id: number | null;
+  date: string;
+  completed: number; // 0 or 1
+  // joined fields
+  category_name?: string;
+  folder_color?: string; // For calendar display distinction if we add it later
+};
+
+export type StudySuggestion = {
+  id: number;
+  category_id: number;
+  title: string;
+  url: string;
+  watched: number; // 0 or 1
+  type: string;
+  created_at: string | null;
+};

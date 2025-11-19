@@ -7,6 +7,11 @@ type GeneratedQA = {
   correct?: 'a' | 'b' | 'c' | 'd' | 'v' | 'f';
 };
 
+type GeneratedSchedule = {
+  dayIndex: number;
+  topics: string[];
+};
+
 // Gerar questões a partir de uma categoria usando Gemini (via fetch)
 // Obs.: O usuário deve ter a variável GEMINI_API_KEY salva via modal
 export async function generateQuestionsByCategory(
@@ -355,4 +360,93 @@ Seja detalhado, educativo e motivador. Use linguagem clara e didática.`;
   return text;
 }
 
+export async function generateStudySchedule(params: {
+  examDate: string;
+  availableDays: number;
+  topics: string[];
+  maxTopicsPerDay: number;
+}): Promise<GeneratedSchedule[]> {
+  const apiKey = await getApiKey();
+  if (!apiKey) throw new Error('API key não configurada. Abra o modal e salve a chave.');
 
+  const prompt = `Atue como um coach de estudos especializado. 
+Crie um cronograma de estudos detalhado e inteligente.
+
+ENTRADAS:
+- Data da prova: ${params.examDate}
+- Dias de estudo disponíveis: ${params.availableDays}
+- Matérias disponíveis: ${params.topics.join(', ')}
+- Máximo de matérias por dia: ${params.maxTopicsPerDay}
+
+REGRAS DE OURO:
+1. Distribua TODAS as matérias fornecidas ao longo dos dias disponíveis.
+2. Respeite ESTRITAMENTE o limite de ${params.maxTopicsPerDay} matérias por dia.
+3. Intercale matérias para evitar monotonia (ex: não coloque 3 matérias de exatas seguidas se possível).
+4. Se houver mais dias que matérias, faça revisões ou repita tópicos importantes.
+5. Se houver mais matérias que o possível para cobrir uma vez, priorize as mais densas, mas tente cobrir tudo.
+
+SAÍDA OBRIGATÓRIA (JSON):
+Retorne APENAS um JSON válido com a seguinte estrutura, sem texto antes ou depois:
+[
+  { "dayIndex": 0, "topics": ["Matéria A", "Matéria B"] },
+  { "dayIndex": 1, "topics": ["Matéria C"] },
+  ...
+]
+O dayIndex deve ir de 0 até ${params.availableDays - 1}.`;
+
+  const model = 'gemini-2.5-flash';
+  const modelName = model;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${apiKey}`;
+
+  const body = {
+    generationConfig: {
+      response_mime_type: 'application/json',
+    },
+    contents: [
+      {
+        parts: [{ text: prompt }],
+      },
+    ],
+  };
+
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`AI Request Failed: ${res.status} ${res.statusText}`, errText);
+      throw new Error('Failed to generate schedule');
+    }
+
+    const data = await res.json();
+    const text = data?.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+    
+    // Parse JSON
+    let schedule;
+    try {
+      schedule = JSON.parse(text);
+    } catch (e) {
+      // Fallback: try to extract JSON block
+      const match = text.match(/```(?:json)?\s*([\s\S]*?)```/i) || text.match(/\[[\s\S]*\]/);
+      if (match) {
+        try {
+          schedule = JSON.parse(match[1] || match[0]);
+        } catch {
+          console.warn("Failed to parse fallback JSON for schedule");
+        }
+      }
+    }
+
+    if (Array.isArray(schedule)) return schedule;
+    if (schedule?.schedule && Array.isArray(schedule.schedule)) return schedule.schedule;
+    
+    throw new Error('Invalid schedule format');
+  } catch (e) {
+    console.error("AI Schedule Error", e);
+    return [];
+  }
+}

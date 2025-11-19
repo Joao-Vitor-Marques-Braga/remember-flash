@@ -13,6 +13,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { ThemedTextInput } from '@/components/ThemedTextInput';
 import DraggableFlatList from 'react-native-draggable-flatlist';
 import { useEssayRepository } from '@/lib/repositories';
+import { ScheduleTab } from '@/components/ScheduleTab';
 
 function HomeTab() {
   const router = useRouter();
@@ -320,7 +321,7 @@ function EssayTab() {
 }
 
 export default function HomeScreen() {
-  const [tab, setTab] = React.useState<'home' | 'questions' | 'essay'>('home');
+  const [tab, setTab] = React.useState<'home' | 'questions' | 'essay' | 'schedule'>('home');
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme() ?? 'light';
   const surface = useThemeColor({}, 'surface');
@@ -328,7 +329,7 @@ export default function HomeScreen() {
   const tint = Colors[colorScheme].tint;
   return (
     <SafeAreaView style={styles.safe} edges={['top','bottom','left','right']}>
-      {tab === 'home' ? <HomeTab /> : tab === 'questions' ? <QuestionsTab /> : <EssayTab />}
+      {tab === 'home' ? <HomeTab /> : tab === 'questions' ? <QuestionsTab /> : tab === 'essay' ? <EssayTab /> : <ScheduleTab />}
       <View
         style={[
           styles.fabBar,
@@ -358,6 +359,13 @@ export default function HomeScreen() {
           iconName="create"
           tint={tint}
           onPress={() => setTab('essay')}
+        />
+        <TabButton
+          active={tab === 'schedule'}
+          label="Cronograma"
+          iconName="calendar"
+          tint={tint}
+          onPress={() => setTab('schedule')}
         />
       </View>
     </SafeAreaView>

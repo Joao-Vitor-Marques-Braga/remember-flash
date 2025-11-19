@@ -4,13 +4,13 @@ import { ThemedTextInput } from '@/components/ThemedTextInput';
 import { Colors } from '@/constants/theme';
 import { useThemeColor } from '@/hooks/use-theme-color';
 import { generateFlashcardsFromPdf, generateQuestionsByCategory } from '@/lib/ai';
-import { useCardRepository, useCategoryRepository, useFolderRepository } from '@/lib/repositories';
+import { useCardRepository, useCategoryRepository, useFolderRepository, useStudyRepository } from '@/lib/repositories';
 import { Ionicons } from '@expo/vector-icons';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
 import { Link, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import React from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View } from 'react-native';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Modal, Platform, Pressable, StyleSheet, TextInput, View, Linking } from 'react-native';
 import DraggableFlatList from 'react-native-draggable-flatlist';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
@@ -22,9 +22,11 @@ export default function CategoryDetailScreen() {
   const { listCardsByCategory, createCard, deleteCard, updateCard, reorderCards } = useCardRepository();
   const { renameCategory, deleteCategory } = useCategoryRepository();
   const { getFolderByCategoryId } = useFolderRepository();
+  const { listSuggestions, toggleSuggestion } = useStudyRepository();
   const [title, setTitle] = React.useState('');
   const [description, setDescription] = React.useState('');
   const [cards, setCards] = React.useState<any[]>([]);
+  const [suggestions, setSuggestions] = React.useState<any[]>([]);
   const [search, setSearch] = React.useState('');
   const [refreshing, setRefreshing] = React.useState(false);
   const [expanded, setExpanded] = React.useState<Record<number, boolean>>({});
@@ -50,6 +52,8 @@ export default function CategoryDetailScreen() {
     if (!categoryId) return;
     const data = await listCardsByCategory(categoryId);
     setCards(data);
+    const suggs = await listSuggestions(categoryId);
+    setSuggestions(suggs);
     try {
       const f = await getFolderByCategoryId(categoryId);
       if (f) {
@@ -275,6 +279,24 @@ export default function CategoryDetailScreen() {
                       </View>
                     ) : null}
                   </View>
+                </View>
+
+                <View style={[styles.panel, { backgroundColor: surface, borderColor: border, marginBottom: 8 }]}>
+                  <ThemedText type="subtitle">Sugestões de Estudo (YouTube)</ThemedText>
+                  {suggestions.length === 0 ? (
+                    <ThemedText style={{ opacity: 0.7 }}>Nenhuma sugestão ainda. Crie um cronograma para gerar.</ThemedText>
+                  ) : (
+                    suggestions.map(s => (
+                      <View key={s.id} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 8 }}>
+                        <Pressable onPress={async () => { await toggleSuggestion(s.id, !s.watched); await load(); }}>
+                          <Ionicons name={s.watched ? "checkbox" : "square-outline"} size={24} color={s.watched ? "#4CAF50" : Colors.light.tint} />
+                        </Pressable>
+                        <Pressable onPress={() => Linking.openURL(s.url)} style={{ flex: 1 }}>
+                          <ThemedText type="link" numberOfLines={1}>{s.title}</ThemedText>
+                        </Pressable>
+                      </View>
+                    ))
+                  )}
                 </View>
 
                 <View style={[styles.panel, { backgroundColor: surface, borderColor: border, marginBottom: 8 }]}>
